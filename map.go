@@ -19,7 +19,7 @@ In its current state, it shows that deletes are slower, from 0.9x at 256 entries
 down to 0.7x at 2^18 entries.
 
 With certain map sizes (> 500K entries), and depending on the host CPU cache
-size, intmap.Delete seems to get suddenly faster that the builtin delete. This
+size, intmap.Delete seems to get suddenly faster than the builtin delete. This
 is simply due to the fact that this happens when the map size reaches a sweet
 spot where the builtin map starts to be adversely impacted by cache misses while
 intmap.Map is not yet affected due to its smaller memory footprint. This

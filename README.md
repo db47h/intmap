@@ -1,5 +1,17 @@
 
+[bench-img]: https://raw.githubusercontent.com/db47h/intmap/master/bench-1.png
+[godoc]: https://godoc.org/github.com/db47h/intmap
+[godoc-img]: https://godoc.org/github.com/db47h/intmap?status.svg
+[goreport]: https://goreportcard.com/report/github.com/db47h/intmap
+[goreport-img]: https://goreportcard.com/badge/github.com/db47h/intmap
+[license]: https://img.shields.io/github/license/db47h/intmap.svg
+
 # intmap
+
+[![GoDoc][godoc-img]][godoc]
+[![GoReportCard][goreport-img]][goreport]
+![MIT License][license]
+
 `import "github.com/db47h/intmap"`
 
 * [Overview](#pkg-overview)
@@ -38,6 +50,10 @@ Benchmark sample (*Builtin are performed using a regular map[int]interface{}):
 	BenchmarkBuiltinMapGet-6        20000000                62.5 ns/op
 	BenchmarkIntMapDelete-6         30000000                37.7 ns/op
 	BenchmarkBuiltinMapDelete-6     30000000                34.4 ns/op
+
+Performance graph for different map sizes (shorter bars are better):
+
+![benchmarks][bench-img]
 
 ### Internals
 The implementation is based on <a href="http://java-performance.info/implementing-world-fastest-java-int-to-int-hash-map/">http://java-performance.info/implementing-world-fastest-java-int-to-int-hash-map/</a>.

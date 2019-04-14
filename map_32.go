@@ -1,3 +1,7 @@
+// Copyright 2019 Denis Bernard <db047h@gmail.com>
+// Use of this source code is governed by a MIT-style
+// license that can be found in the LICENSE file.
+
 // +build 386 arm mips mipsle
 
 package intmap

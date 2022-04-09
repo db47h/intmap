@@ -3,60 +3,43 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package intmap implements a fast int to interface{} map. Map data is kept
-densely packed in order to improve data locality.
-
-The primary use case for this implementation is that of small maps
-(regardless of the size of the key set) with almost no deletions.
+Package intmap implements a fast integer keyed map. Map data is kept densely
+packed in order to improve data locality.
 
 Set and Get operations are consistently faster than the builtin
-map[int]interface{}: Get performs 1.5 times faster for data sets <= 256
-entries, down to 1.1 at 2^22 entries, while Set starts at 1.3x at 256 entries,
-up to 1.5 at 2^22.
-
-The delete test is wrong since we end up deleting millions of non-existent keys.
-In its current state, it shows that deletes are slower, from 0.9x at 256 entries
-down to 0.7x at 2^18 entries.
-
-With certain map sizes (> 500K entries), and depending on the host CPU cache
-size, intmap.Delete seems to get suddenly faster than the builtin delete. This
-is simply due to the fact that this happens when the map size reaches a sweet
-spot where the builtin map starts to be adversely impacted by cache misses while
-intmap.Map is not yet affected due to its smaller memory footprint. This
-behavior should be not relied upon: intmap.Delete is slower for all intents and
-purposes.
+map[int]interface{}: Get takes from 25 to 50% less time, depending on CPU
+architecture and map size. On some CPUs like an AMD FX, there is even an actual
+drop off point in map size (~16384) where the builtin map gets slightly faster.
 
 Benchmark sample (*Builtin are performed using a regular map[int]interface{}):
 
-	BenchmarkIntMapSet-6            20000000                71.6 ns/op
-	BenchmarkBuiltinMapSet-6        20000000                99.0 ns/op
-	BenchmarkIntMapGet-6            30000000                42.2 ns/op
-	BenchmarkBuiltinMapGet-6        20000000                62.5 ns/op
-	BenchmarkIntMapDelete-6         30000000                37.7 ns/op
-	BenchmarkBuiltinMapDelete-6     30000000                34.4 ns/op
+    BenchmarkIntMapSet-6            28105802                37.53 ns/op
+    BenchmarkBuiltinMapSet-6        21551445                53.44 ns/op
+    BenchmarkIntMapGet-6            35170137                33.10 ns/op
+    BenchmarkBuiltinMapGet-6        26973751                44.79 ns/op
+    BenchmarkIntMapDelete-6         33600421                32.16 ns/op
+    BenchmarkBuiltinMapDelete-6     38036679                28.68 ns/op
+
+The delete test is wrong since we end up deleting millions of non-existent keys,
+which is not a typical use case. Regardless, deletes are slower than with the
+builtin map.
 
 
 Internals
 
-The implementation is based on http://java-performance.info/implementing-world-fastest-java-int-to-int-hash-map/.
+The implementation is based on
+http://java-performance.info/implementing-world-fastest-java-int-to-int-hash-map/.
 
-The stored values can be of any type. If interface{} is not suitable, just
-fork/vendor the repository and change the Value type definition to the desired
-value type (this will break the tests but not the implementation).
+The stored values can be of any type.
+
 */
 package intmap
 
-// Value type stored in the map. This can be change to suit specific needs without
-// breaking the implementation (the tests will break though): fork/vendor the repository
-// and change interface{} to the desired value type.
-//
-type Value interface{}
-
 // KeyValue wraps a key-value pair.
 //
-type KeyValue struct {
+type KeyValue[V any] struct {
 	Key   int
-	Value Value
+	Value V
 }
 
 const (
@@ -78,12 +61,12 @@ const (
 // When the size of a Map grows over the fill ratio, its capacity is doubled.
 // Maps are never shrunk when deleting keys.
 //
-type Map struct {
-	es           []KeyValue
+type Map[V any] struct {
+	es           []KeyValue[V]
 	size         int
 	threshold    int
-	freeKeyValue Value
 	hasFreeKey   bool
+	freeKeyValue V
 }
 
 func nextIdx(idx int) int {
@@ -95,8 +78,8 @@ func nextIdx(idx int) int {
 //
 // See Map.Init for more details about the capacity and fillratio parameters.
 //
-func New(capacity int, fillratio float32) *Map {
-	var m Map
+func New[V any](capacity int, fillratio float32) *Map[V] {
+	var m Map[V]
 	m.Init(capacity, fillratio)
 	return &m
 }
@@ -126,7 +109,7 @@ func New(capacity int, fillratio float32) *Map {
 // i.e. requesting a Map of initial capacity 2 with any fill ratio > 0.5 will
 // result in a real fill ratio of 0.5 due to integer rounding.
 //
-func (m *Map) Init(capacity int, fillratio float32) {
+func (m *Map[V]) Init(capacity int, fillratio float32) {
 	capacity = nextPowerOf2(capacity)
 	if capacity < 0 {
 		panic("invalid capacity requested")
@@ -140,17 +123,15 @@ func (m *Map) Init(capacity int, fillratio float32) {
 	} else if threshold >= capacity {
 		threshold = capacity - 1
 	}
-	var zv Value
-	m.es = make([]KeyValue, capacity)
+	m.es = make([]KeyValue[V], capacity)
 	m.size = 0
 	m.threshold = threshold
-	m.freeKeyValue = zv
 	m.hasFreeKey = false
 }
 
 // Set sets or resets the value for the given key.
 //
-func (m *Map) Set(key int, value Value) {
+func (m *Map[V]) Set(key int, value V) {
 	if key == freeKey {
 		m.hasFreeKey = true
 		m.freeKeyValue = value
@@ -161,7 +142,7 @@ func (m *Map) Set(key int, value Value) {
 		// over fillratio, rehash
 		if l == 0 {
 			l = 8
-			m.es = make([]KeyValue, l)
+			m.es = make([]KeyValue[V], l)
 			m.threshold = int(defaultFillRatio * float32(l)) // use a default fillratio of 87.5%
 		} else {
 			l *= 2
@@ -177,20 +158,20 @@ func (m *Map) Set(key int, value Value) {
 			m.size++
 			fallthrough
 		case key:
-			m.es[idx] = KeyValue{key, value}
+			m.es[idx] = KeyValue[V]{key, value}
 			return
 		}
 		idx = nextIdx(idx) & mod
 	}
 }
 
-func (m *Map) rehash() {
+func (m *Map[V]) rehash() {
 	es := m.es
 	l := len(es) << 1
 	if l < 0 {
 		panic("map size overflows addressable space")
 	}
-	m.es = make([]KeyValue, l)
+	m.es = make([]KeyValue[V], l)
 	m.size = 0
 	m.threshold <<= 1
 	for i := range es {
@@ -203,40 +184,41 @@ func (m *Map) rehash() {
 // Get returns the value associated with the given key and ok set to true if the key exists.
 // If the keys does not exist, it returns the zero value for the Value type and false.
 //
-func (m *Map) Get(key int) (v Value, ok bool) {
-	var zv Value
+func (m *Map[V]) Get(key int) (v V, ok bool) {
 	if key == freeKey {
 		if m.hasFreeKey {
 			return m.freeKeyValue, true
 		}
-		return zv, false
+		return v, false
 	}
 	mod := len(m.es) - 1
 	if mod < 0 {
-		return zv, false
+		return v, false
 	}
 	startIdx := hash(key) & mod
 	idx := startIdx
 	for {
-		switch m.es[idx].Key {
+		t := &m.es[idx]
+		switch t.Key {
 		case freeKey:
-			return zv, false
+			return v, false
 		case key:
-			return m.es[idx].Value, true
+			return t.Value, true
 		}
 		idx = nextIdx(idx) & mod
 		if idx == startIdx {
-			return zv, false
+			return v, false
 		}
 	}
 }
 
 // Delete deletes the given key and returns true if the key was present in the map.
 //
-func (m *Map) Delete(key int) bool {
+func (m *Map[V]) Delete(key int) bool {
 	if key == freeKey {
+		var zv V
 		rv := m.hasFreeKey
-		m.freeKeyValue = nil
+		m.freeKeyValue = zv
 		m.hasFreeKey = false
 		return rv
 	}
@@ -262,7 +244,7 @@ func (m *Map) Delete(key int) bool {
 	}
 }
 
-func (m *Map) shiftKeys(idx int) {
+func (m *Map[V]) shiftKeys(idx int) {
 	var k int
 	mod := len(m.es) - 1
 	for {
@@ -271,7 +253,7 @@ func (m *Map) shiftKeys(idx int) {
 		for {
 			k = m.es[idx].Key
 			if k == freeKey {
-				m.es[last] = KeyValue{Key: freeKey}
+				m.es[last] = KeyValue[V]{Key: freeKey}
 				return
 			}
 			slot := hash(k) & mod
@@ -284,13 +266,13 @@ func (m *Map) shiftKeys(idx int) {
 			}
 			idx = nextIdx(idx) & mod
 		}
-		m.es[last] = KeyValue{k, m.es[idx].Value}
+		m.es[last] = KeyValue[V]{k, m.es[idx].Value}
 	}
 }
 
-// Size returns the number if keys set in the map.
+// Len returns the number if keys set in the map.
 //
-func (m *Map) Size() int {
+func (m *Map[V]) Len() int {
 	if m.hasFreeKey {
 		return m.size + 1
 	}
@@ -299,8 +281,8 @@ func (m *Map) Size() int {
 
 // Keys returns an unordered slice of the map keys.
 //
-func (m *Map) Keys() []int {
-	ks := make([]int, m.Size())
+func (m *Map[V]) Keys() []int {
+	ks := make([]int, m.Len())
 	i := 0
 	if m.hasFreeKey {
 		ks[i] = freeKey
@@ -327,22 +309,22 @@ func (m *Map) Keys() []int {
 // Next is supported as well of changing the value of any existing key.
 // Inserting new keys or deleting any other keys will break the iterator.
 //
-func (m *Map) Iterator() *Iterator {
+func (m *Map[V]) Iterator() *Iterator[V] {
 	// find a sensible default for
-	return &Iterator{m: m, lastKey: freeKey ^ -1, i: -1}
+	return &Iterator[V]{m: m, lastKey: freeKey ^ -1, i: -1}
 }
 
 // Iterator represents an iterator over a map.
 //
-type Iterator struct {
-	m       *Map
+type Iterator[V any] struct {
+	m       *Map[V]
 	lastKey int
 	i       int
 }
 
 // HasNext returns true if there are any keys left to read.
 //
-func (i *Iterator) HasNext() bool {
+func (i *Iterator[V]) HasNext() bool {
 	es := i.m.es
 	l := len(es)
 	if i.i < 0 {
@@ -370,7 +352,7 @@ func (i *Iterator) HasNext() bool {
 // Next returns the next key/value pair. Calling Next several times in a row
 // without calling HasNext in between will yield the same result.
 //
-func (i *Iterator) Next() (key int, value Value) {
+func (i *Iterator[V]) Next() (key int, value V) {
 	if i.i < 0 {
 		if !i.m.hasFreeKey {
 			panic("Next() called without calling HasNext() first")

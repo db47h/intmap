@@ -10,31 +10,33 @@ import (
 
 var keyMax = flag.Int("maxkey", 1<<8, "Maximum key value")
 
-var result intmap.Value
+type Value interface{}
+
+var result Value
 var bResult bool
 
 func BenchmarkIntMapSet(b *testing.B) {
-	var m intmap.Map
+	var m intmap.Map[Value]
 	rand.Seed(424242)
 	for i := 0; i < b.N; i++ {
 		v := rand.Intn(*keyMax)
-		m.Set(v, intmap.Value(v))
+		m.Set(v, Value(v))
 	}
 }
 
 func BenchmarkBuiltinMapSet(b *testing.B) {
-	m := make(map[int]intmap.Value)
+	m := make(map[int]Value)
 	rand.Seed(424242)
 	for i := 0; i < b.N; i++ {
 		v := rand.Intn(*keyMax)
-		m[v] = intmap.Value(v)
+		m[v] = Value(v)
 	}
 }
 
 func BenchmarkIntMapGet(b *testing.B) {
-	var m intmap.Map
+	var m intmap.Map[Value]
 	for i := 0; i < *keyMax; i++ {
-		m.Set(i, intmap.Value(i))
+		m.Set(i, Value(i))
 	}
 	rand.Seed(424242)
 	b.ResetTimer()
@@ -47,9 +49,9 @@ func BenchmarkIntMapGet(b *testing.B) {
 }
 
 func BenchmarkBuiltinMapGet(b *testing.B) {
-	m := make(map[int]intmap.Value)
+	m := make(map[int]Value)
 	for i := 0; i < *keyMax; i++ {
-		m[i] = intmap.Value(i)
+		m[i] = Value(i)
 	}
 	rand.Seed(424242)
 	b.ResetTimer()
@@ -62,9 +64,9 @@ func BenchmarkBuiltinMapGet(b *testing.B) {
 }
 
 func BenchmarkIntMapDelete(b *testing.B) {
-	var m intmap.Map
+	var m intmap.Map[Value]
 	for i := 0; i < *keyMax; i++ {
-		m.Set(i, intmap.Value(i))
+		m.Set(i, Value(i))
 	}
 	rand.Seed(424242)
 	b.ResetTimer()
@@ -74,9 +76,9 @@ func BenchmarkIntMapDelete(b *testing.B) {
 }
 
 func BenchmarkBuiltinMapDelete(b *testing.B) {
-	var m = make(map[int]intmap.Value)
+	var m = make(map[int]Value)
 	for i := 0; i < *keyMax; i++ {
-		m[i] = intmap.Value(i)
+		m[i] = Value(i)
 	}
 	rand.Seed(424242)
 	b.ResetTimer()
@@ -87,8 +89,8 @@ func BenchmarkBuiltinMapDelete(b *testing.B) {
 
 func TestMap(t *testing.T) {
 	rand.Seed(424242)
-	var mm intmap.Map
-	var sm = make(map[int]intmap.Value)
+	var mm intmap.Map[Value]
+	var sm = make(map[int]Value)
 
 	for i := 0; i < 1000000; i++ {
 		if i%100 == 0 {
@@ -100,12 +102,12 @@ func TestMap(t *testing.T) {
 		}
 		k := rand.Intn(1024)
 		v := rand.Int()
-		mm.Set(k, intmap.Value(v))
-		sm[k] = intmap.Value(v)
+		mm.Set(k, Value(v))
+		sm[k] = Value(v)
 	}
 
-	if len(sm) != mm.Size() {
-		t.Fatalf("bad size: expected %d, got %d", len(sm), mm.Size())
+	if len(sm) != mm.Len() {
+		t.Fatalf("bad size: expected %d, got %d", len(sm), mm.Len())
 	}
 	for k, v := range sm {
 		vv, ok := mm.Get(k)
@@ -119,7 +121,7 @@ func TestMap(t *testing.T) {
 }
 
 func TestMap_Iter(t *testing.T) {
-	var m intmap.Map
+	var m intmap.Map[Value]
 
 	m.Set(42, 21)
 	m.Set(22, 11)
